@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.noirandroid.lib"
-    compileSdk = 33
+    compileSdk = 34
 
     defaultConfig {
         minSdk = 23
@@ -58,7 +58,7 @@ afterEvaluate {
                 from(components["release"])
                 groupId = "com.github.madztheo"
                 artifactId = "noir_android"
-                version = "v1.0.0-beta.14-3"
+                version = "v1.0.0-beta.19-1"
             }
         }
     }
@@ -67,46 +67,90 @@ afterEvaluate {
 val rustLibName = "noir_java" // Adjust based on your library name
 val rustLibPath = "src/main/java/$rustLibName" // Adjust based on your library name
 
-tasks.register<Exec>("buildRust") {
-    workingDir(file(rustLibPath))
-    // Set the environment variables necessary for OpenSSL
-    val androidHome = System.getenv("ANDROID_HOME")
-    val ndkVersion = System.getenv("NDK_VERSION")
-    val hostTag = System.getenv("HOST_TAG")
-    val path = System.getenv("PATH")
-    val androidNdkHome = "$androidHome/ndk/$ndkVersion"
-
-    environment("ANDROID_NDK_HOME", androidNdkHome)
-    environment("PATH", "$path:$androidNdkHome/toolchains/llvm/prebuilt/$hostTag/bin")
-    environment("CMAKE_TOOLCHAIN_FILE", "./android-toolchain.cmake")
-    // Android arm64
-    commandLine("cargo", "build", "--release", "--target", "aarch64-linux-android", "-vvvv")
-    // Android arm
-    // commandLine("cargo", "build", "--release", "--target", "armv7-linux-androideabi")
-    // Android x86
-    // commandLine("cargo", "build", "--release", "--target", "i686-linux-android")
-    // Android x86_64
-    // commandLine("cargo", "build", "--release", "--target", "x86_64-linux-android")
+// Find NDK toolchain bin directory to make cross-compilation tools available to cargo
+val ndkToolchainBin: String by lazy {
+    val sdkDir = android.sdkDirectory
+    val ndkDir = file("$sdkDir/ndk").listFiles()
+        ?.filter { it.isDirectory }
+        ?.maxByOrNull { it.name }
+        ?: error("No Android NDK found in $sdkDir/ndk")
+    val hostTag = if (System.getProperty("os.name").lowercase().contains("mac")) "darwin-x86_64" else "linux-x86_64"
+    "$ndkDir/toolchains/llvm/prebuilt/$hostTag/bin"
 }
 
-tasks.register<Copy>("copyRustLibs") {
-    val buildType = System.getenv("BUILD_TYPE")
-    if (buildType == "MANUAL") {
-        // Copy the compiled library (.so file) to the appropriate JNI folder
-        from("$rustLibPath/target/aarch64-linux-android/release")
-        into("src/main/jniLibs/arm64-v8a")
-    } else {
-        // Download the .so file from the GitHub release
+tasks.register("buildRust") {
+    doLast {
+        val pathWithNdk = "$ndkToolchainBin:${System.getenv("PATH")}"
+        // Use the Android-specific barretenberg static library.
+        // Workaround for barretenberg-rs build.rs matching "linux" before
+        // "android" in the aarch64-linux-android target triple, which causes
+        // it to download the wrong (generic Linux) build.
+        val bbAndroidDir = file("$rustLibPath/bb-android")
+        // Android arm64
+        exec {
+            workingDir(file(rustLibPath))
+            environment("PATH", pathWithNdk)
+            environment("BB_LIB_DIR", file("$bbAndroidDir/arm64").absolutePath)
+            commandLine("cargo", "build", "--release", "--target", "aarch64-linux-android")
+        }
+        // Android x86_64
+        exec {
+            workingDir(file(rustLibPath))
+            environment("PATH", pathWithNdk)
+            environment("BB_LIB_DIR", file("$bbAndroidDir/x86_64").absolutePath)
+            commandLine("cargo", "build", "--release", "--target", "x86_64-linux-android")
+        }
+    }
+}
+
+tasks.register("copyRustLibs") {
+    doLast {
+        val buildType = System.getenv("BUILD_TYPE")
+        if (buildType == "MANUAL") {
+            // Copy the compiled library (.so file) to the appropriate JNI folder
+            copy {
+                from("$rustLibPath/target/aarch64-linux-android/release")
+                include("lib${rustLibName}.so")
+                // Already included in React Native apps but not in bare Android app
+                // so we need to include it manually
+                include("libc++_shared.so")
+                into("src/main/jniLibs/arm64-v8a")
+            }
+            copy {
+                from("$rustLibPath/target/x86_64-linux-android/release")
+                include("lib${rustLibName}.so")
+                include("libc++_shared.so")
+                into("src/main/jniLibs/x86_64")
+            }
+        } else {
+            // Download the .so files from the GitHub release
+            val releaseUrl = "https://github.com/madztheo/noir_android/releases/download/v1.0.0-beta.19-1"
+            download.run {
+                src("$releaseUrl/libnoir_java_arm64-v8a.so")
+                dest("src/main/jniLibs/arm64-v8a/libnoir_java.so")
+                overwrite(false)
+            }
+            download.run {
+                src("$releaseUrl/libnoir_java_x86_64.so")
+                dest("src/main/jniLibs/x86_64/libnoir_java.so")
+                overwrite(false)
+            }
+        }
+        // Download libc++_shared.so (with std::__1 namespace) for each ABI.
+        // The pre-built barretenberg uses standard LLVM libc++ (not the NDK's
+        // __ndk1 variant), so we need a matching libc++_shared.so at runtime.
+        val libcppUrl = "https://github.com/madztheo/noir_android/releases/download/v1.0.0-beta.19-1"
         download.run {
-            src("https://github.com/madztheo/noir_android/releases/download/v1.0.0-beta.14-3/libnoir_java_arm64-v8a.so")
-            dest("src/main/jniLibs/arm64-v8a/libnoir_java.so")
+            src("$libcppUrl/libc++_shared_arm64-v8a.so")
+            dest("src/main/jniLibs/arm64-v8a/libc++_shared.so")
+            overwrite(false)
+        }
+        download.run {
+            src("$libcppUrl/libc++_shared_x86_64.so")
+            dest("src/main/jniLibs/x86_64/libc++_shared.so")
             overwrite(false)
         }
     }
-    include("lib${rustLibName}.so")
-    // Already included in React Native apps but not in bare Android app
-    // so we need to include it manually
-    include("libc++_shared.so")
 }
 
 tasks.whenTaskAdded {
