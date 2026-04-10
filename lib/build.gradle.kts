@@ -104,6 +104,9 @@ tasks.register("buildRust") {
 }
 
 tasks.register("copyRustLibs") {
+    if (System.getenv("BUILD_TYPE") == "MANUAL") {
+        dependsOn("buildRust")
+    }
     doLast {
         val buildType = System.getenv("BUILD_TYPE")
         if (buildType == "MANUAL") {
@@ -152,12 +155,6 @@ tasks.register("copyRustLibs") {
 }
 
 tasks.whenTaskAdded {
-    val buildType = System.getenv("BUILD_TYPE")
-    if (buildType == "MANUAL") {
-        if (name == "javaPreCompileDebug" || name == "javaPreCompileRelease") {
-            dependsOn("buildRust")
-        }
-    }
     if (name.matches(Regex("merge.*JniLibFolders"))) {
         dependsOn("copyRustLibs")
     }
