@@ -10,7 +10,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        minSdk = 23
+        minSdk = 24
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
@@ -58,7 +58,7 @@ afterEvaluate {
                 from(components["release"])
                 groupId = "com.github.madztheo"
                 artifactId = "noir_android"
-                version = "v1.0.0-beta.19-4"
+                version = "v1.0.0-beta.19-5"
             }
         }
     }
@@ -111,20 +111,16 @@ tasks.register("copyRustLibs") {
             copy {
                 from("$rustLibPath/target/aarch64-linux-android/release")
                 include("lib${rustLibName}.so")
-                // Already included in React Native apps but not in bare Android app
-                // so we need to include it manually
-                include("libc++_shared.so")
                 into("src/main/jniLibs/arm64-v8a")
             }
             copy {
                 from("$rustLibPath/target/x86_64-linux-android/release")
                 include("lib${rustLibName}.so")
-                include("libc++_shared.so")
                 into("src/main/jniLibs/x86_64")
             }
         } else {
             // Download the .so files from the GitHub release
-            val releaseUrl = "https://github.com/madztheo/noir_android/releases/download/v1.0.0-beta.19-4"
+            val releaseUrl = "https://github.com/madztheo/noir_android/releases/download/v1.0.0-beta.19-5"
             download.run {
                 src("$releaseUrl/libnoir_java_arm64-v8a.so")
                 dest("src/main/jniLibs/arm64-v8a/libnoir_java.so")
@@ -136,19 +132,21 @@ tasks.register("copyRustLibs") {
                 overwrite(false)
             }
         }
-        // Download libc++_shared.so (with std::__1 namespace) for each ABI.
+        // Copy libc++.so (standard LLVM libc++ with std::__1 namespace) for each ABI.
         // The pre-built barretenberg uses standard LLVM libc++ (not the NDK's
-        // __ndk1 variant), so we need a matching libc++_shared.so at runtime.
-        val libcppUrl = "https://github.com/madztheo/noir_android/releases/download/v1.0.0-beta.19-4"
-        download.run {
-            src("$libcppUrl/libc++_shared_arm64-v8a.so")
-            dest("src/main/jniLibs/arm64-v8a/libc++_shared.so")
-            overwrite(false)
+        // __ndk1 variant), so we ship it as libc++.so (matching its SONAME) to
+        // avoid conflicts with the NDK's libc++_shared.so in consuming apps.
+        // The library is placed in bb-android/<arch>/ so the linker finds it
+        // before the NDK sysroot, resulting in NEEDED:libc++.so instead of
+        // NEEDED:libc++_shared.so in the final binary.
+        val bbAndroidDir = file("$rustLibPath/bb-android")
+        copy {
+            from(file("$bbAndroidDir/arm64/libc++.so"))
+            into("src/main/jniLibs/arm64-v8a")
         }
-        download.run {
-            src("$libcppUrl/libc++_shared_x86_64.so")
-            dest("src/main/jniLibs/x86_64/libc++_shared.so")
-            overwrite(false)
+        copy {
+            from(file("$bbAndroidDir/x86_64/libc++.so"))
+            into("src/main/jniLibs/x86_64")
         }
     }
 }

@@ -1,2 +1,2 @@
 /build
-src/main/jniLibs/**/libc++_shared.so
+src/main/jniLibs/**/libc++.so
