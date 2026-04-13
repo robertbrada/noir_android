@@ -135,21 +135,32 @@ tasks.register("copyRustLibs") {
                 overwrite(false)
             }
         }
-        // Copy libc++.so (standard LLVM libc++ with std::__1 namespace) for each ABI.
-        // The pre-built barretenberg uses standard LLVM libc++ (not the NDK's
-        // __ndk1 variant), so we ship it as libc++.so (matching its SONAME) to
-        // avoid conflicts with the NDK's libc++_shared.so in consuming apps.
-        // The library is placed in bb-android/<arch>/ so the linker finds it
-        // before the NDK sysroot, resulting in NEEDED:libc++.so instead of
-        // NEEDED:libc++_shared.so in the final binary.
-        val bbAndroidDir = file("$rustLibPath/bb-android")
-        copy {
-            from(file("$bbAndroidDir/arm64/libc++.so"))
-            into("src/main/jniLibs/arm64-v8a")
-        }
-        copy {
-            from(file("$bbAndroidDir/x86_64/libc++.so"))
-            into("src/main/jniLibs/x86_64")
+        // Copy or download libc++.so (standard LLVM libc++ with std::__1 namespace)
+        // for each ABI. The pre-built barretenberg uses standard LLVM libc++ (not
+        // the NDK's __ndk1 variant), so we ship it as libc++.so (matching its
+        // SONAME) to avoid conflicts with the NDK's libc++_shared.so in consuming apps.
+        if (buildType == "MANUAL") {
+            val bbAndroidDir = file("$rustLibPath/bb-android")
+            copy {
+                from(file("$bbAndroidDir/arm64/libc++.so"))
+                into("src/main/jniLibs/arm64-v8a")
+            }
+            copy {
+                from(file("$bbAndroidDir/x86_64/libc++.so"))
+                into("src/main/jniLibs/x86_64")
+            }
+        } else {
+            val libcppUrl = "https://github.com/madztheo/noir_android/releases/download/v1.0.0-beta.19-5"
+            download.run {
+                src("$libcppUrl/libc++_arm64-v8a.so")
+                dest("src/main/jniLibs/arm64-v8a/libc++.so")
+                overwrite(false)
+            }
+            download.run {
+                src("$libcppUrl/libc++_x86_64.so")
+                dest("src/main/jniLibs/x86_64/libc++.so")
+                overwrite(false)
+            }
         }
     }
 }
