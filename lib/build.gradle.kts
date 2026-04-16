@@ -58,7 +58,7 @@ afterEvaluate {
                 from(components["release"])
                 groupId = "com.github.madztheo"
                 artifactId = "noir_android"
-                version = "v1.0.0-beta.19-5"
+                version = "v1.0.0-beta.20-1"
             }
         }
     }
@@ -123,7 +123,7 @@ tasks.register("copyRustLibs") {
             }
         } else {
             // Download the .so files from the GitHub release
-            val releaseUrl = "https://github.com/madztheo/noir_android/releases/download/v1.0.0-beta.19-5"
+            val releaseUrl = "https://github.com/madztheo/noir_android/releases/download/v1.0.0-beta.20-1"
             download.run {
                 src("$releaseUrl/libnoir_java_arm64-v8a.so")
                 dest("src/main/jniLibs/arm64-v8a/libnoir_java.so")
@@ -150,7 +150,7 @@ tasks.register("copyRustLibs") {
                 into("src/main/jniLibs/x86_64")
             }
         } else {
-            val libcppUrl = "https://github.com/madztheo/noir_android/releases/download/v1.0.0-beta.19-5"
+            val libcppUrl = "https://github.com/madztheo/noir_android/releases/download/v1.0.0-beta.20-1"
             download.run {
                 src("$libcppUrl/libc++_arm64-v8a.so")
                 dest("src/main/jniLibs/arm64-v8a/libc++.so")

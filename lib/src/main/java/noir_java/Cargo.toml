@@ -11,8 +11,18 @@ crate-type = ["cdylib"]
 
 [dependencies]
 jni = "0.21.1"
-noir_rs = { git = "https://github.com/zkpassport/noir_rs.git", tag = "v1.0.0-beta.19-4", features = ["barretenberg"] }
+noir_rs = { git = "https://github.com/zkpassport/noir_rs.git", tag = "v1.0.0-beta.20-1", features = ["barretenberg"] }
 hex = "0.4.3"
 log = "0.4"
 android_logger = "0.13"
 env_logger = "0.10"
+
+# Pin pre-release RustCrypto crates to versions compatible with k256/p256 0.14.0-rc.8.
+# Without these pins, Cargo resolves to newer rc versions of elliptic-curve and ecdsa
+# that introduce trait bounds (MulVartime, MulByGeneratorVartime) not yet implemented
+# by k256/p256/primeorder rc.8.
+[dependencies.elliptic-curve]
+version = "=0.14.0-rc.29"
+
+[dependencies.ecdsa]
+version = "=0.17.0-rc.16"
