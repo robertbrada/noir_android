@@ -161,7 +161,7 @@ class Circuit(public val bytecode: String, public val manifest: CircuitManifest,
             "array" -> {
                 return parameter_type.length!!.toInt() * computeTotalLengthOfArray(parameter_type.type!!)
             }
-            "field", "integer" -> {
+            "field", "integer", "boolean" -> {
                 return 1
             }
             "string" -> {
@@ -242,6 +242,9 @@ class Circuit(public val bytecode: String, public val manifest: CircuitManifest,
                                 if (element is Double) {
                                     witness[index.toString()] = "0x${(element.toLong()).toString(16)}"
                                     index++
+                                } else if (element is Boolean) {
+                                    witness[index.toString()] = if (element) "0x1" else "0x0"
+                                    index++
                                 } else if(element is String) {
                                     // Check the number is in hexadecimal format
                                     if (!element.startsWith("0x")) {
@@ -249,7 +252,7 @@ class Circuit(public val bytecode: String, public val manifest: CircuitManifest,
                                     }
                                     witness[index.toString()] = element
                                     index++
-                                
+
                                 } else {
                                     throw IllegalArgumentException("Unexpected array type for parameter: ${parameter.name}. Got ${element.javaClass}")
                                 }
