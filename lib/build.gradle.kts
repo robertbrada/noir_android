@@ -78,13 +78,65 @@ val ndkToolchainBin: String by lazy {
     "$ndkDir/toolchains/llvm/prebuilt/$hostTag/bin"
 }
 
+// Must match the barretenberg-rs version pinned through the noir_rs tag in
+// noir_java/Cargo.toml, or the Rust and C++ sides disagree on the msgpack API.
+val barretenbergVersion = "5.0.0"
+
+// barretenberg links against standard LLVM libc++ (std::__1), not the NDK's __ndk1
+// variant. Placing libc++.so next to the static library makes the binary record
+// NEEDED:libc++.so, avoiding conflicts with libc++_shared.so in consuming apps.
+tasks.register("fetchBarretenbergAndroidLibs") {
+    doLast {
+        // Fail early if the pin above drifts from what Cargo actually resolves.
+        val cargoLock = file("$rustLibPath/Cargo.lock")
+        if (!cargoLock.exists()) {
+            exec {
+                workingDir(file(rustLibPath))
+                commandLine("cargo", "generate-lockfile")
+            }
+        }
+        val lockedVersion = Regex("name = \"barretenberg-rs\"\\s+version = \"([^\"]+)\"")
+            .find(cargoLock.readText())?.groupValues?.get(1)
+            ?: error("barretenberg-rs not found in ${cargoLock.path}")
+        if (lockedVersion != barretenbergVersion) {
+            error(
+                "barretenbergVersion is $barretenbergVersion but Cargo.lock resolves " +
+                "barretenberg-rs $lockedVersion. Update barretenbergVersion in lib/build.gradle.kts."
+            )
+        }
+
+        val bbAndroidDir = file("$rustLibPath/bb-android")
+        val libcppUrl = "https://github.com/madztheo/noir_android/releases/download/v1.0.0-beta.22-1"
+        mapOf(
+            "arm64" to Pair("arm64-android", "libc++_arm64-v8a.so"),
+            "x86_64" to Pair("x86_64-android", "libc++_x86_64.so"),
+        ).forEach { (abiDir, bbArchAndLibcpp) ->
+            val (bbArch, libcppAsset) = bbArchAndLibcpp
+            val destDir = file("$bbAndroidDir/$abiDir")
+            destDir.mkdirs()
+            val tarFile = file("$destDir/barretenberg-static-$bbArch-v$barretenbergVersion.tar.gz")
+            download.run {
+                src("https://github.com/AztecProtocol/barretenberg/releases/download/v$barretenbergVersion/barretenberg-static-$bbArch.tar.gz")
+                dest(tarFile)
+                overwrite(false)
+            }
+            copy {
+                from(tarTree(tarFile))
+                into(destDir)
+            }
+            download.run {
+                src("$libcppUrl/$libcppAsset")
+                dest(file("$destDir/libc++.so"))
+                overwrite(false)
+            }
+        }
+    }
+}
+
 tasks.register("buildRust") {
+    dependsOn("fetchBarretenbergAndroidLibs")
     doLast {
         val pathWithNdk = "$ndkToolchainBin:${System.getenv("PATH")}"
-        // Use the Android-specific barretenberg static library.
-        // Workaround for barretenberg-rs build.rs matching "linux" before
-        // "android" in the aarch64-linux-android target triple, which causes
-        // it to download the wrong (generic Linux) build.
         val bbAndroidDir = file("$rustLibPath/bb-android")
         // Android arm64
         exec {
